@@ -1,30 +1,47 @@
 #!/bin/bash
 
-if [ "$EUID" -ne 0 ]
-  then echo "Please run as root"
-  exit
-fi
+#user than ran the script's id (normal user)
+USER_ID=$(id -u $SUDO_USER)
 
-        # grab user dir
-VMDIR=$(getent passwd $SUDO_USER | cut -d: -f6)"/VMs/Class"
-mkdir -p $VMDIR
+# Shed su perms when required
+RUN="setpriv --reuid=$USER_ID --regid=$USER_ID --reset-env --init-groups"
+
+# grab user dir 
+VMDIR=$(getent passwd $SUDO_USER | cut -d: -f6)"/VMs/Class" 
+
+# ensure running as root for installing things
+if [ $EUID != 0 ];
+then
+   echo "Please run this script as root"
+   exit 1
+fi 
+#--------------------------------------------
+
+
+# make directories as user
+$RUN mkdir -p $VMDIR
 cd $VMDIR
+#--------------------------
 
-apt-get install virtualbox
-apt-get install terraform
 
-wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | tee /usr/share/keyrings/hashicorp-archive-keyring.gpg
+# install required software
+#---------------------------------------------------------
+#apt-get install -y virtualbox
 
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/hashicorp.list
+#wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | tee /usr/share/keyrings/hashicorp-archive-keyring.gpg
 
-apt update && apt install terraform
+#echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/hashicorp.list
 
-wget "https://drive.google.com/uc?export=download&id=14ATyECEOm1G9cM-0RU7oHDePJr6tTqDF" -O main.tf
-wget "https://drive.google.com/u/0/uc?id=1Axq-q0OjuRUJ-zUHXZwH3Ni5lhHlbTqn&export=download&confirm=t" -O Ubuntu.ova
+#apt update && apt install -y terraform
+#----------------------------------------------------------
 
-terraform -chdir=$(pwd) init
-# auto start terraform
-echo 'yes' | terraform apply
+# Download necessary files
+$RUN wget "https://drive.google.com/uc?export=download&id=14ATyECEOm1G9cM-0RU7oHDePJr6tTqDF" -O main.tf
+$RUN wget "https://drive.google.com/u/0/uc?id=1Axq-q0OjuRUJ-zUHXZwH3Ni5lhHlbTqn&export=download&confirm=t" -O Ubuntu.ova
+# ----------------------------------------------------------
 
-#give ownership to current user for manual cleanup
-chown -R $SUDO_USER $VMDIR/../../VMs
+# Init Terraform
+$RUN terraform -chdir=$(pwd) init
+
+# auto start terraform to install Ubuntu.ova
+echo 'yes' | $RUN terraform apply
